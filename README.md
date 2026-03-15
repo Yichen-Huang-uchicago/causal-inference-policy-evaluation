@@ -6,6 +6,12 @@ This repository contains a comprehensive suite of applied statistical analyses f
 
 The analysis progresses from foundational Randomized Controlled Trials (RCTs) to advanced econometric techniques like Difference-in-Differences (DiD) and Instrumental Variables (IV/LATE), implemented in **R**.
 
+## 🎯 Executive Summary & Strategic Takeaways
+
+* **The "So What?" of the Policy:** Expanding health insurance (Medicaid) functions primarily as a crucial **financial safety net** (significantly reducing out-of-pocket costs) rather than an immediate cure for physical health or subjective well-being in the short term.
+* **Strategic User Segmentation:** The intervention's effectiveness is highly heterogeneous. Vulnerable populations (e.g., those with poor baseline health) and specific demographics exhibit a much higher propensity to utilize outpatient care when financial barriers are removed.
+* **The Value of Rigorous Data Science:** Relying on simple correlations in observational data leads to severely biased decisions (e.g., the illusion that higher healthcare spending directly increases life expectancy, which disappears when controlling for GDP). Advanced methods like **Instrumental Variables (IV)** are essential to adjust for real-world non-compliance and uncover the true, actionable impact of an intervention.
+
 ## 🛠️ Tech Stack & Methodology
 * **Language:** R (`tidyverse`, `AER`, `sandwich`, `lmtest`)
 * **Core Methods:** * A/B Testing & RCT Balance Verification
