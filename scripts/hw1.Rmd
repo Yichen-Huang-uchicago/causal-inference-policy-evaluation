@@ -1,0 +1,88 @@
+---
+title: "Untitled"
+output:
+  pdf_document: default
+  html_document: default
+date: "2026-01-11"
+---
+
+
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/dataset')
+ohie_data <- read.csv("OHIE.CSV")
+head(ohie_data) #To check dataset
+```
+
+###QUESTION 1
+```{r }
+options(scipen = 999)
+#define baseline
+baseline_vars <- c("numhh_list", "female", "age", "race_white", 
+                   "hs_degree", "college_degree", "health_baseline")
+#create an new frame to set outcome (row name)
+balance_results <- data.frame(Variable = character(),
+                              Control_Mean = numeric(),
+                              Treated_Mean = numeric(),
+                              Difference = numeric(),
+                              P_Value = numeric(),
+                              stringsAsFactors = FALSE)
+#use for loop
+for (col_name in baseline_vars) {
+  control_data <- ohie_data[ohie_data$treated == 0, col_name]
+  treated_data <- ohie_data[ohie_data$treated == 1, col_name]
+  mean_c <- mean(control_data, na.rm = TRUE)
+  mean_t <- mean(treated_data, na.rm = TRUE)
+  diff_val <- mean_t - mean_c
+  #t-test
+  t_test_res <- t.test(treated_data, control_data, var.equal = TRUE)
+  #p-value
+  p_value <- t_test_res$p.value
+  balance_results[nrow(balance_results) + 1, ] <- list(col_name, mean_c, mean_t, diff_val, p_value)
+  print("=== Question 1: Balance Table ===")
+  print(balance_results)
+}
+colnames(ohie_data)
+```
+
+###QUESTION 3
+```{r}
+#define variable name
+outcome_vars <- c("count_visit_dr", "count_visit_er", "out_of_pocket_spend", "health_score", "happy")
+#create an new frame to set outcome (row name)
+outcome_results <- data.frame(Variable = character(),
+                              Control_Mean = numeric(),
+                              Treated_Mean = numeric(),
+                              Difference = numeric(),
+                              P_Value = numeric(),
+                              stringsAsFactors = FALSE)
+#calculate the for loop
+for (col_name in outcome_vars) {
+  control_data <- ohie_data[ohie_data$treated == 0, col_name]
+  treated_data <- ohie_data[ohie_data$treated == 1, col_name]
+  mean_c <- mean(control_data, na.rm = TRUE)
+  mean_t <- mean(treated_data, na.rm = TRUE)
+  diff_val <- mean_t - mean_c
+  t_test_res <- t.test(treated_data, control_data, var.equal = TRUE)
+  p_value <- t_test_res$p.value
+  outcome_results[nrow(outcome_results) + 1, ] <- list(col_name, mean_c, mean_t, diff_val, p_value)
+}
+#print the outcome
+print("=== Question 3: Outcomes Table ===")
+print(outcome_results)
+```
+
+###QUESTION 4
+```{r}
+print("=== Question 4: Regression Results ===")
+# use for loop
+for (col_name in outcome_vars) {
+  formula_str <- paste(col_name, "~ treated")
+  model <- lm(as.formula(formula_str), data = ohie_data)
+  model_summary <- summary(model)
+  beta_1 <- model_summary$coefficients[2, 1]
+  p_val_reg <- model_summary$coefficients[2, 4]
+  cat("\nDependent Variable (Y):", col_name, "\n")
+  cat("  -> Regression Beta1 (Diff):", beta_1, "\n")
+  cat("  -> Regression P-value:      ", p_val_reg, "\n")
+}
+```

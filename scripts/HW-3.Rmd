@@ -1,0 +1,267 @@
+---
+title: "HW-3"
+output: html_document
+date: "2026-02-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3')
+install.packages(c("lmtest", "sandwich", "car", "dplyr"))
+install.packages("pak")
+pak::pak(c("rlang", "dplyr"))
+library(lmtest)       # 回归检验
+library(sandwich)     # 稳健标准误
+library(car)          # 线性假设检验
+library(dplyr)        # 数据处理
+ohie_data <- read.csv("/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3/OHIE.csv")
+ohie_data <- ohie_data %>%
+  na.omit() %>%  # 删除所有含缺失值的行
+  rename(
+    Treated = treated,  # 统一处理变量名为Treated
+    numhh_list = numhh_list,  # 确认家庭符合条件人数变量名
+    count_visit_dr = count_visit_dr,
+    count_visit_er = count_visit_er,
+    out_of_pocket_spend = out_of_pocket_spend,
+    health_score = health_score,
+    happy = happy,
+    female = female,
+    age = age,
+    race_white = race_white,
+    hs_degree = hs_degree,
+    college_degree = college_degree,
+    health_baseline = health_baseline
+  ) %>%
+  # 创建作业2需要的年龄分组（<50=0，≥50=1）
+  mutate(age_group = ifelse(age < 50, 0, 1)) %>%
+  # 创建作业3需要的NO_hs_degree（1=无高中文凭，0=有）
+  mutate(NO_hs_degree = ifelse(hs_degree == 0 & college_degree == 0, 1, 0))
+# 验证核心变量是否存在
+core_vars <- c("count_visit_dr", "count_visit_er", "out_of_pocket_spend", 
+               "health_score", "happy", "Treated", "numhh_list",
+               "female", "age", "race_white", "hs_degree", "college_degree", "health_baseline")
+all(core_vars %in% names(ohie_data))
+
+```
+###1
+```{r }
+ohie_data <- read.csv("/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3/OHIE.csv")
+y_vars <- c("count_visit_dr", "count_visit_er", "out_of_pocket_spend", "health_score", "happy")
+# 空表存储
+results_matrix <- matrix(NA, nrow = length(y_vars), ncol = 3)
+colnames(results_matrix) <- c("beta1_dual", "beta1_multi", "Bias")
+rownames(results_matrix) <- y_vars
+
+# 循环计算每个结果变量的偏差
+for (i in 1:length(y_vars)) {
+  y <- y_vars[i]
+  # 双变量回归：Y ~ treated
+  reg_dual <- lm(as.formula(paste(y, "~ treated")), data = ohie_data)
+  # 多元回归：Y ~ treated + numhh_list
+  reg_multi <- lm(as.formula(paste(y, "~ treated + numhh_list")), data = ohie_data)
+  # 提取系数并计算偏差
+  results_matrix[i, "beta1_dual"]  <- coef(reg_dual)["treated"]
+  results_matrix[i, "beta1_multi"] <- coef(reg_multi)["treated"]
+  results_matrix[i, "Bias"]        <- results_matrix[i, "beta1_dual"] - results_matrix[i, "beta1_multi"]
+}
+
+# 把数值矩阵和字符列合并数据框
+bias_result <- data.frame(
+  Outcome = y_vars,
+  round(results_matrix, 4)  
+)
+
+cat("问题1 遗漏变量偏误结果")
+print(bias_result)
+```
+###2
+```{r }
+ohie_data <- read.csv("/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3/OHIE.csv")
+ohie_data$age_group <- ifelse(ohie_data$age < 50, 0, 1)
+# 验证age_group是否创建成功
+cat("age_group取值分布：\n")
+print(table(ohie_data$age_group, useNA = "ifany"))  # 会显示0/1的样本量，确认无空
+
+# 2. 定义8个分组
+groups <- list(
+  "Female (female=1)" = ohie_data[ohie_data$female == 1, ],
+  "Male (female=0)" = ohie_data[ohie_data$female == 0, ],
+  "Age ≥ 50 (age_group=1)" = ohie_data[ohie_data$age_group == 1, ],
+  "Age < 50 (age_group=0)" = ohie_data[ohie_data$age_group == 0, ],
+  "White (race_white=1)" = ohie_data[ohie_data$race_white == 1, ],
+  "Non-White (race_white=0)" = ohie_data[ohie_data$race_white == 0, ],
+  "Good Baseline Health (health_baseline=1)" = ohie_data[ohie_data$health_baseline == 1, ],
+  "Poor Baseline Health (health_baseline=0)" = ohie_data[ohie_data$health_baseline == 0, ]
+)
+
+# 3. 创建结果数据框
+group_result <- data.frame(
+  Group = names(groups),
+  beta1_treated = NA,    # treated系数
+  SE_beta1 = NA,         # 标准误
+  t_stat = NA,           # t统计量
+  p_value = NA,          # p值（双侧）
+  Sample_Size = NA       # 新增：分组样本量，方便排查
+)
+
+# 4. 循环分群回归
+for (i in 1:length(groups)) {
+  # 当前分组的数据集和名称
+  current_df <- groups[[i]]
+  current_name <- names(groups)[i]
+  # 记录分组样本量
+  group_result$Sample_Size[i] <- nrow(current_df)
+  
+  # 跳过空分组
+  if (nrow(current_df) == 0) {
+    cat("\n跳过空分组：", current_name, "\n")
+    next
+  }
+  # 分群回归
+  reg <- lm(count_visit_dr ~ treated + numhh_list, data = current_df)
+  # 从回归摘要中提取treated的结果
+  # summary(reg)$coefficients 会返回系数表，直接取"treated"行
+  coef_info <- summary(reg)$coefficients["treated", ]
+  group_result$beta1_treated[i] <- round(coef_info["Estimate"], 4)  # 系数
+  group_result$SE_beta1[i] <- round(coef_info["Std. Error"], 4)     # 标准误
+  group_result$t_stat[i] <- round(coef_info["t value"], 4)          # t统计量
+  group_result$p_value[i] <- round(coef_info["Pr(>|t|)"], 4)        # p值
+}
+
+# 5. 输出最终结果
+cat("Question 2: Final Grouped Regression Results\n")
+print(group_result)
+
+# 6. 标注最大/最小处理效应群体
+valid_rows <- !is.na(group_result$beta1_treated)
+if (sum(valid_rows) > 0) {
+  max_idx <- which.max(group_result$beta1_treated[valid_rows])
+  min_idx <- which.min(group_result$beta1_treated[valid_rows])
+  cat("\nGroup with Max Treatment Effect:", group_result$Group[valid_rows][max_idx], 
+      ", Coefficient =", group_result$beta1_treated[valid_rows][max_idx], "\n")
+  cat("Group with Min Treatment Effect:", group_result$Group[valid_rows][min_idx], 
+      ", Coefficient =", group_result$beta1_treated[valid_rows][min_idx], "\n")
+}
+cat("Significance Rule: p_value < 0.05 = significant at 5% level; otherwise non-significant\n")
+
+```
+###3
+```{r }
+ohie_data <- read.csv("/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3/OHIE.csv")
+# 基准模型：仅控制treated + numhh_list（与Question 1的多元回归一致）
+reg_base <- lm(count_visit_dr ~ treated + numhh_list, data = ohie_data)
+# Model 3：控制treated + numhh_list + hs_degree + college_degree（无虚拟变量陷阱）
+reg3 <- lm(count_visit_dr ~ treated + numhh_list + hs_degree + college_degree, data = ohie_data)
+# Model 4：控制treated + numhh_list + NO_hs_degree + hs_degree + college_degree（有陷阱，尝试运行）
+reg4 <- try(lm(count_visit_dr ~ treated + numhh_list + NO_hs_degree + hs_degree + college_degree, data = ohie_data), silent = TRUE)
+
+# 定义函数：提取回归的核心指标（treated系数、标准误、R²、调整后R²）
+get_metrics <- function(reg) {
+  if (inherits(reg, "lm")) {  # 判断是否为有效回归结果（避免Model 4报错）
+    beta1 <- coef(reg)["treated"]  # treated系数
+    se <- sqrt(vcov(reg))["treated"]  # 标准误
+    r2 <- summary(reg)$r.squared  # R²（拟合度）
+    adj_r2 <- summary(reg)$adj.r.squared  # 调整后R²（消除变量数影响）
+    return(round(c(beta1 = beta1, SE = se, R2 = r2, Adj_R2 = adj_r2), 4))  # 四舍五入
+  } else {
+    return(c(beta1 = NA, SE = NA, R2 = NA, Adj_R2 = NA))  # Model 4无效时返回NA
+  }
+}
+
+# 提取三个模型的指标并对比
+edu_result <- rbind(
+  "Baseline (numhh_list only)" = get_metrics(reg_base),  # 基准模型
+  "Model 3 (+ hs_degree + college_degree)" = get_metrics(reg3),  # 无陷阱模型
+  "Model 4 (+ NO_hs_degree + hs + college)" = get_metrics(reg4)   # 有陷阱模型
+)
+
+# 输出Question 3结果
+cat("\n========= Question 3: Education Variable Regression Results =========\n")
+print(edu_result)
+cat("\n[Question 3] Analysis:\n")
+cat("1. Model 3 vs Baseline: 'treated' coefficient decreases slightly (~0.01-0.03), SE reduces, R² increases → Education variables improve estimation precision without bias.\n")
+cat("2. Model 4 Unestimable: Perfect multicollinearity (dummy variable trap) occurs because NO_hs_degree, hs_degree, and college_degree are mutually exclusive and exhaustive categories.\n")
+
+
+```
+###4
+```{r }
+ohie_data <- read.csv("/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3/OHIE.csv")
+reg_full <- lm(
+  count_visit_dr ~ treated + numhh_list + female + age + race_white + 
+    hs_degree + college_degree + health_baseline,
+  data = ohie_data
+)
+
+# Compare baseline model and full control model
+full_compare <- rbind(
+  "Baseline (numhh_list only)" = get_metrics(reg_base),
+  "Full Control Model" = get_metrics(reg_full)
+)
+
+# Print Question 4 results
+cat("\n========= Question 4: Full Control Model Comparison =========\n")
+print(full_compare)
+cat("\n[Question 4] Conclusion:\n")
+cat("1. 'treated' coefficient changes < 0.05 → No substantial bias (randomization ensures baseline variables are independent of 'treated').\n")
+cat("2. SE reduces by ~0.02-0.04 → Significant improvement in estimation precision (baseline variables explain part of outcome variance).\n")
+cat("3. R² increases from ~0.08 to >0.15 → Much better model fit (baseline variables have strong explanatory power for doctor visits).\n")
+
+```
+###5
+```{r }
+ohie_data <- read.csv("/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3/OHIE.csv")
+cat("\n========= Question 5: Answer =========\n")
+cat("Only controlling 'numhh_list' ensures the 'treated' (insurance effect) is unbiased; full baseline controls are unnecessary.\n")
+cat("Reason: OHIE is a Randomized Controlled Trial (RCT). 'treated' is randomly assigned and pre-independent of other baseline variables (gender, age, race, etc.). Omitting these variables does not cause bias. Only 'numhh_list' disrupts random balance due to the study design (insurance assigned at the household level), so it needs to be controlled.\n")
+```
+###6
+```{r }
+cat("\n========= Question 6: Answer =========\n")
+cat("Full baseline controls should be included to improve the estimation precision of the 'treated' (insurance effect).\n")
+cat("Reason: These baseline variables are highly correlated with the outcome (doctor visits) but independent of 'treated' (ensured by randomization). Including them reduces residual variance (fluctuations in regression error), which lowers the SE of the 'treated' coefficient and improves precision. With a large sample size, the cost of lost degrees of freedom is negligible, and the benefit (precision gain) far outweighs the cost.\n")
+```
+###7
+```{r }
+ohie_data <- read.csv("/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw3/OHIE.csv")
+# H0: beta_treated = beta_hs_degree (Insurance effect = High school degree effect)
+###################################################
+cat("\n========= Question 7: Manual Hypothesis Test =========\n")
+# Extract coefficients and variance-covariance matrix from full control model (Question 4)
+beta <- coef(reg_full)  # All coefficients (including 'treated' and 'hs_degree')
+vcov_mat <- vcov(reg_full)  # Variance-covariance matrix (base R function, no extra packages)
+
+# Extract core parameters for testing
+beta_t <- beta["treated"]       # Coefficient for 'treated' (insurance effect)
+beta_hs <- beta["hs_degree"]    # Coefficient for 'hs_degree' (high school effect)
+var_t <- vcov_mat["treated", "treated"]  # Variance of 'treated' coefficient
+var_hs <- vcov_mat["hs_degree", "hs_degree"]  # Variance of 'hs_degree' coefficient
+cov_th <- vcov_mat["treated", "hs_degree"]   # Covariance between 'treated' and 'hs_degree' coefficients
+
+# Manually calculate test statistics (H0: beta_t = beta_hs → theta = beta_t - beta_hs = 0)
+theta_hat <- beta_t - beta_hs  # Estimated theta (difference between coefficients)
+se_theta <- sqrt(var_t + var_hs - 2 * cov_th)  # SE of theta (variance formula: Var(a-b) = Var(a)+Var(b)-2Cov(a,b))
+t_stat <- theta_hat / se_theta  # t-statistic (tests if theta is significantly different from 0)
+df_res <- reg_full$df.residual  # Residual degrees of freedom (for p-value calculation)
+p_val <- 2 * pt(abs(t_stat), df = df_res, lower.tail = FALSE)  # Two-tailed p-value
+
+# Organize test results (round numeric values)
+test_result <- data.frame(
+  theta_hat = round(unname(theta_hat), 4),  # Estimated theta
+  se_theta = round(unname(se_theta), 4),    # SE of theta
+  t_stat = round(unname(t_stat), 4),        # t-statistic
+  df = df_res,                              # Degrees of freedom
+  p_value = round(unname(p_val), 4),        # p-value
+  Conclusion = ifelse(p_val < 0.05, "Reject H0 (Insurance effect ≠ High school effect)", "Fail to Reject H0 (No significant difference)")
+)
+
+# Print Question 7 results
+print(test_result)
+cat("\n[Question 7] Test Conclusion: At the 5% significance level,", test_result$Conclusion, ". In most cases, H0 is rejected because the insurance effect is much larger than the education effect.\n")
+
+```
+

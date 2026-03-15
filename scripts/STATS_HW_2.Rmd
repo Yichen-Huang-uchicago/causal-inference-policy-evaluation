@@ -1,0 +1,52 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-01-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###1
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/HW2')
+health <- read.csv("health.csv")
+library(ggplot2)
+ggplot(health, aes(x = health_exp, y = life_exp)) +
+  geom_point() +
+  labs(title = "Life Expectancy vs. Health Expenditure",
+       x = "Health Expenditure per Capita (USD)",
+       y = "Life Expectancy (Years)") +
+  theme_minimal()
+```
+###2
+```{r }
+options(scipen = 999)
+model1 <- lm(life_exp ~ health_exp, data = health)
+summary(model1)
+```
+###3
+```{r }
+# Create new data 
+new_data <- data.frame(health_exp = c(3000, 6000))
+predict(model1, newdata = new_data)
+```
+###5
+```{r }
+model2 <- lm(life_exp ~ health_exp + gdp_pc, data = health)
+summary(model2)
+```
+###6
+```{r }
+summary(model1)$adj.r.squared
+summary(model2)$adj.r.squared
+```
+###7
+```{r }
+# CI for 1 unit
+ci <- confint(model2, "health_exp", level = 0.95)
+# CI for 1000 units 
+print(ci * 1000)
+```
+

@@ -1,0 +1,187 @@
+---
+title: "HW4"
+output: html_document
+date: "2026-03-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw4')
+```
+#1
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw4')
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+
+ohie <- read_csv("OHIE.csv")  
+
+means_tab <- ohie %>%
+  group_by(treated) %>%
+  summarise(
+    n = n(),
+    mean_ever_medicaid = mean(ever_medicaid, na.rm = TRUE),
+    .groups = "drop"
+  )
+means_tab
+```
+#2
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw4')
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+ohie <- read_csv("OHIE.csv")  
+fs <- lm(ever_medicaid ~ treated + numhh_list, data = ohie)
+summary(fs)
+coeftest(fs, vcov = vcovHC(fs, type = "HC1"))
+waldtest(fs, . ~ numhh_list, vcov = vcovHC(fs, type = "HC1"))
+
+```
+#3
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw4')
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+
+ohie <- read_csv("OHIE.csv")
+
+fs <- lm(ever_medicaid ~ treated + numhh_list, data = ohie)
+coeftest(fs, vcov = vcovHC(fs, type = "HC1"))
+wald_out <- waldtest(fs, . ~ numhh_list, vcov = vcovHC(fs, type = "HC1"))
+print(wald_out)
+F_value <- wald_out$F[2]
+p_value <- wald_out$`Pr(>F)`[2]
+
+cat("\n---- First-stage partial F for treated (robust) ----\n")
+cat("F =", F_value, "\n")
+cat("p =", p_value, "\n")
+
+ct <- coeftest(fs, vcov = vcovHC(fs, type = "HC1"))
+t_treated <- ct["treated","t value"]
+F_from_t2 <- t_treated^2
+
+cat("\n---- Check (single restriction): F = t^2 ----\n")
+cat("t =", t_treated, "\n")
+cat("F = t^2 =", F_from_t2, "\n")
+```
+#4
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw4')
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+ohie <- read_csv("OHIE.csv")
+d4 <- ohie %>% filter(!is.na(count_visit_dr))
+rf <- lm(count_visit_dr ~ treated + numhh_list, data = d4)
+fs <- lm(ever_medicaid ~ treated + numhh_list, data = d4)
+beta1  <- coef(rf)["treated"]
+alpha1 <- coef(fs)["treated"]
+ratio <- beta1 / alpha1
+cat("N used in both regressions =", nrow(d4), "\n\n")
+cat("Reduced form coef on treated (beta1) =", beta1, "\n")
+cat("First stage  coef on treated (alpha1) =", alpha1, "\n")
+cat("Ratio (beta1/alpha1) =", ratio, "\n")
+
+```
+#5
+```{r }
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+ohie <- read.csv("OHIE.csv")
+d <- subset(ohie, !is.na(count_visit_dr))
+fs <- lm(ever_medicaid ~ treated + numhh_list, data = d)
+summary(fs)
+d$ever_hat <- predict(fs, newdata = d)
+ss_manual <- lm(count_visit_dr ~ ever_hat + numhh_list, data = d)
+summary(ss_manual)
+coef(ss_manual)["ever_hat"]
+# 和第4题比率核对
+rf <- lm(count_visit_dr ~ treated + numhh_list, data = d)
+ratio <- coef(rf)["treated"] / coef(fs)["treated"]
+ratio
+nrow(d)  # 样本量核对
+if (!require(AER)) install.packages("AER")
+library(AER)
+
+iv <- ivreg(count_visit_dr ~ ever_medicaid + numhh_list | treated + numhh_list, data = d)
+summary(iv)   
+if (!require(sandwich)) install.packages("sandwich")
+if (!require(lmtest)) install.packages("lmtest")
+library(sandwich); library(lmtest)
+
+coeftest(iv, vcov. = vcovHC(iv, type = "HC1"))
+```
+#6
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw4')
+ohie <- read.csv("OHIE.csv")
+d <- subset(ohie, !is.na(count_visit_dr))
+d$age2 <- d$age^2
+if (!require(AER)) install.packages("AER")
+library(AER)
+iv_base <- ivreg(
+  count_visit_dr ~ ever_medicaid + numhh_list |
+    treated + numhh_list,
+  data = d
+)
+summary(iv_base)
+iv_full <- ivreg(
+  count_visit_dr ~ ever_medicaid + numhh_list + female + age + age2 +
+    race_white + hs_degree + college_degree + health_baseline |
+    treated + numhh_list + female + age + age2 +
+    race_white + hs_degree + college_degree + health_baseline,
+  data = d
+)
+summary(iv_full)
+b_base <- coef(summary(iv_base))["ever_medicaid", c("Estimate","Std. Error","Pr(>|t|)")]
+b_full <- coef(summary(iv_full))["ever_medicaid", c("Estimate","Std. Error","Pr(>|t|)")]
+b_base
+b_full
+nobs(iv_base)
+nobs(iv_full)
+```
+#7
+```{r }
+setwd('/Users/huangyichen/Desktop/UCHI-QUARTER/2026winter/STATS 2/homework/hw4')
+ohie <- read.csv("OHIE.csv")
+if (!require(AER)) install.packages("AER")
+library(AER)
+ohie <- read.csv("OHIE.csv")
+ohie$age2 <- ohie$age^2
+controls <- c("numhh_list","female","age","age2",
+              "race_white","hs_degree","college_degree","health_baseline")
+outcomes <- c(
+  visit_dr = "count_visit_dr",
+  visit_er = "count_visit_er",
+  out_of_pocket_spend = "out_of_pocket_spend",
+  health_score = "health_score",
+  happy = "happy"
+)
+run_iv <- function(y) {
+  f <- as.formula(
+    paste0(y, " ~ ever_medicaid + ", paste(controls, collapse = " + "),
+           " | treated + ", paste(controls, collapse = " + "))
+  )
+  m <- ivreg(f, data = ohie)          
+  s <- summary(m)
+  c(
+    IV_estimate = coef(s)["ever_medicaid","Estimate"],
+    SE = coef(s)["ever_medicaid","Std. Error"],
+    N = nobs(m)
+  )
+}
+res <- t(sapply(outcomes, run_iv))
+res <- as.data.frame(res)
+res$IV_estimate <- round(res$IV_estimate, 4)
+res$SE <- round(res$SE, 4)
+res
+```
+
